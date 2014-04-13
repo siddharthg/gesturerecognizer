@@ -38,13 +38,13 @@ namespace IAProject
         {
             InitializeComponent();
             capture = new Capture(); //create a camera captue
-            capture.SetCaptureProperty(Emgu.CV.CvEnum.CAP_PROP.CV_CAP_PROP_FRAME_WIDTH, 1280);
-            capture.SetCaptureProperty(Emgu.CV.CvEnum.CAP_PROP.CV_CAP_PROP_FRAME_HEIGHT, 720);
+            capture.SetCaptureProperty(Emgu.CV.CvEnum.CAP_PROP.CV_CAP_PROP_FRAME_WIDTH, 480);
+            capture.SetCaptureProperty(Emgu.CV.CvEnum.CAP_PROP.CV_CAP_PROP_FRAME_HEIGHT, 320);
             ImageTimer = new Timer();
             ImageTimer.Interval = 1000/24;
             ImageTimer.Tick += new EventHandler(ImageTimer_Tick);
             ImageTimer.Start();
-            haar = new HaarCascade("C:\\haarcascade_frontalface_default.xml");
+            //haar = new HaarCascade("C:\\Emgu\\emgucv-windows-universal-cuda 2.9.0.1922\\opencv\\data\\haarcascades\\haarcascade_frontalface_default.xml");
             ArrayList Images=new ArrayList();
             /*foreach (string file in Directory.EnumerateFiles("C:\\standard_test_images\\", "*.tif"))
             {
@@ -87,7 +87,7 @@ namespace IAProject
         {
             Image<Bgr, Byte> Output = Input.Copy();
             Image<Gray, Byte> GrayImage = Input.Convert<Gray, Byte>();
-            var faces = GrayImage.DetectHaarCascade(
+            /*var faces = GrayImage.DetectHaarCascade(
                 haar, 1.4, 4,
                 HAAR_DETECTION_TYPE.DO_CANNY_PRUNING,
                 new Size(Input.Width / 8, Input.Height / 8))[0];
@@ -97,7 +97,8 @@ namespace IAProject
                 Ellipse E = new Ellipse(new PointF(R.Location.X + R.Width / 2, R.Location.Y + R.Width / 2), new SizeF(R.Width, (int)(R.Height * 1.2)), 90);
                 Output.Draw(E, new Bgr(Color.Black), -1);
             }
-            return Output;
+            return Output;*/
+            return Input;
         }
 
 

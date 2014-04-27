@@ -15,62 +15,95 @@ using System.Drawing;
 using Emgu.CV.CvEnum;
 using System.Collections;
 using System.IO;
-
+using System.Runtime.InteropServices;
 
 namespace IAProject
 {
     public partial class Form1 : Form
     {
-        Capture capture; //create a camera captue
-        Timer ImageTimer;
+        /* For handeling the click event */
+
+        [DllImport("user32.dll")]
+        static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData,
+   int dwExtraInfo);
+
+        private const int MOUSEEVENTF_MOVE = 0x0001;
+        private const int MOUSEEVENTF_LEFTDOWN = 0x0002;
+        private const int MOUSEEVENTF_LEFTUP = 0x0004;
+        private const int MOUSEEVENTF_RIGHTDOWN = 0x0008;
+        private const int MOUSEEVENTF_RIGHTUP = 0x0010;
+        private const int MOUSEEVENTF_MIDDLEDOWN = 0x0020;
+        private const int MOUSEEVENTF_MIDDLEUP = 0x0040;
+        private const int MOUSEEVENTF_ABSOLUTE = 0x8000;
+
+        Capture capture; //Webcam Variable
+        Timer ImageTimer; //Timer to click pictures
         Image<Bgr, Byte> MyImage;
-        Image<Gray, Byte> Mask;
+        Image<Gray, Byte> Mask; 
         Image<Bgr, Byte> MyImageRegion;
         Image<Gray, Byte> MyMaskRegion;
-        private HaarCascade haar;
+        
+        private HaarCascade haar; //To detect the face using Haar Method
+        
         Seq<Point> Hull;
         Seq<MCvConvexityDefect> Defects;
-        int fingerNum;
-        MCvConvexityDefect[] DefectArray;
         Seq<Point> filteredHull;
+
+        int fingerNum; //Global Number of fingers.
+        
+        MCvConvexityDefect[] DefectArray;
+
+        public void DoMouseClick()
+        {
+            //Call the imported function with the cursor's current position
+            uint X = Convert.ToUInt32(Cursor.Position.X);
+            uint Y = Convert.ToUInt32(Cursor.Position.Y);
+            mouse_event(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP, X, Y, 0, 0);
+        }  
 
         public Form1()
         {
-            InitializeComponent();
-            capture = new Capture(); //create a camera captue
-            capture.SetCaptureProperty(Emgu.CV.CvEnum.CAP_PROP.CV_CAP_PROP_FRAME_WIDTH, 480);
-            capture.SetCaptureProperty(Emgu.CV.CvEnum.CAP_PROP.CV_CAP_PROP_FRAME_HEIGHT, 320);
+            InitializeComponent();//Intializes the form UI.
+            
+            capture = new Capture(); //create a camera capture
+
+            capture.SetCaptureProperty(Emgu.CV.CvEnum.CAP_PROP.CV_CAP_PROP_FRAME_WIDTH, 1280);
+            capture.SetCaptureProperty(Emgu.CV.CvEnum.CAP_PROP.CV_CAP_PROP_FRAME_HEIGHT, 720);
+            
             ImageTimer = new Timer();
             ImageTimer.Interval = 1000/24;
             ImageTimer.Tick += new EventHandler(ImageTimer_Tick);
             ImageTimer.Start();
-            //haar = new HaarCascade("C:\\Emgu\\emgucv-windows-universal-cuda 2.9.0.1922\\opencv\\data\\haarcascades\\haarcascade_frontalface_default.xml");
-            ArrayList Images=new ArrayList();
-            /*foreach (string file in Directory.EnumerateFiles("C:\\standard_test_images\\", "*.tif"))
-            {
-                Image<Bgr, Byte> I = new Image<Bgr, byte>(file);
-                ImageTimer_Tick(I);
-            }*/
 
+            haar = new HaarCascade("C:\\Emgu\\emgucv-windows-universal-cuda 2.9.0.1922\\opencv\\data\\haarcascades\\haarcascade_frontalface_default.xml");
+            ArrayList Images=new ArrayList();
         }
+
         public void ImageTimer_Tick(object sender, EventArgs e)
         {
             //MyImage = I;
             MyImage= capture.QueryFrame();
             if (MyImage != null)
             {
-                Image<Bgr, Byte> MyNoFaceImage = RemoveFace(MyImage);
-                imageBox4.Image = MyNoFaceImage;
-                Mask = SkinDetect(MyNoFaceImage, new Hsv(0, 10, 60), new Hsv(20, 150, 255), 0);
                 imageBox1.Image = MyImage;
-                imageBox2.Image = Mask;
+                //Remove the face out of the image
+                Image<Bgr, Byte> MyNoFaceImage = RemoveFace(MyImage);
+                imageBox2.Image = MyNoFaceImage;
+                //Take the skin out of the without face image
+                Mask = SkinDetect(MyNoFaceImage, new Ycc(0, 131, 80), new Ycc(255, 185, 135), 1);//Grayscale Image
+                imageBox4.Image = Mask;
+                //Extracting the canny edges
                 Image<Gray, Byte> CannyImage = new Image<Gray, Byte>(Mask.Size);
                 CvInvoke.cvCanny(Mask, CannyImage, 30, 60, 3);
-                imageBox3.Image = CannyImage;
+                imageBox5.Image = CannyImage;
+                //Getting the mask
                 MyMaskRegion = GetMask();
-                imageBox5.Image = MyMaskRegion;
-                imageBox4.Image = MyImageRegion;
-                MyImageRegion.Resize(100, 100, INTER.CV_INTER_CUBIC);
+                imageBox6.Image = MyMaskRegion;
+                imageBox7.Image = MyImageRegion;
+                if (MyImageRegion != null)
+                {
+                    MyImageRegion.Resize(100, 100, INTER.CV_INTER_CUBIC);
+                }
                 ExtractFingerNumber(MyMaskRegion);
 
                 imageBox1.SizeMode = PictureBoxSizeMode.Zoom;
@@ -79,6 +112,8 @@ namespace IAProject
                 imageBox4.SizeMode = PictureBoxSizeMode.Zoom;
                 imageBox5.SizeMode = PictureBoxSizeMode.Zoom;
                 imageBox6.SizeMode = PictureBoxSizeMode.Zoom;
+                imageBox7.SizeMode = PictureBoxSizeMode.Zoom;
+                imageBox8.SizeMode = PictureBoxSizeMode.Zoom;
             }
         }
 
@@ -87,7 +122,7 @@ namespace IAProject
         {
             Image<Bgr, Byte> Output = Input.Copy();
             Image<Gray, Byte> GrayImage = Input.Convert<Gray, Byte>();
-            /*var faces = GrayImage.DetectHaarCascade(
+            var faces = GrayImage.DetectHaarCascade(
                 haar, 1.4, 4,
                 HAAR_DETECTION_TYPE.DO_CANNY_PRUNING,
                 new Size(Input.Width / 8, Input.Height / 8))[0];
@@ -97,8 +132,7 @@ namespace IAProject
                 Ellipse E = new Ellipse(new PointF(R.Location.X + R.Width / 2, R.Location.Y + R.Width / 2), new SizeF(R.Width, (int)(R.Height * 1.2)), 90);
                 Output.Draw(E, new Bgr(Color.Black), -1);
             }
-            return Output;*/
-            return Input;
+            return Output;
         }
 
 
@@ -109,19 +143,21 @@ namespace IAProject
             {
                 Image<Ycc, Byte> YCrCbInput = Input.Convert<Ycc, Byte>();
                 skin = YCrCbInput.InRange((Ycc)min, (Ycc)max);
-                imageBox4.Image = YCrCbInput;
             }
             else
             {
                 Image<Hsv, Byte> HsvInput = Input.Convert<Hsv, Byte>();
                 skin = HsvInput.InRange((Hsv)min, (Hsv)max);
-                imageBox4.Image = HsvInput;
             }
+
+            Image<Gray, Byte> skin2 = skin.Convert<Gray, Byte>();
+            imageBox3.Image = skin2;
+
             StructuringElementEx Rect12 = new StructuringElementEx(12, 12, 6, 6, Emgu.CV.CvEnum.CV_ELEMENT_SHAPE.CV_SHAPE_CROSS);
             StructuringElementEx Rect6 = new StructuringElementEx(6, 6, 3, 3, Emgu.CV.CvEnum.CV_ELEMENT_SHAPE.CV_SHAPE_CROSS);
 
             CvInvoke.cvErode(skin, skin, Rect6, 1);
-            CvInvoke.cvDilate(skin, skin, Rect12, 2);
+            CvInvoke.cvDilate(skin, skin, Rect12, 1);
             
             return skin;
         }
@@ -148,7 +184,7 @@ namespace IAProject
 
                 if (Big != null)
                 {
-                    Contour<Point> currentContour = Big.ApproxPoly(Big.Perimeter * 0.0025, storage);
+                    Contour<Point> currentContour = Big.ApproxPoly(Big.Perimeter * 0.0035, storage);
                     MyImage.Draw(currentContour, new Bgr(Color.LimeGreen), 5);
                     var Ract = currentContour.BoundingRectangle;
                     int Diff = Ract.Height - Ract.Width;
@@ -167,6 +203,7 @@ namespace IAProject
                         if (Ract.X < 0) { Ract.X = 0; }
                         if (Ract.X + Ract.Width > MyImage.Width) { Ract.X = MyImage.Width - Ract.Width; }
                     }
+
                     Ract.Inflate(new Size(40, 40));
                     MyImageRegion = MyImage.Copy();
                     Image<Gray, Byte> MYROI = Mask.Copy();
@@ -182,7 +219,14 @@ namespace IAProject
         {
             using (MemStorage storage = new MemStorage()) //allocate storage for contour approximation
             {
-                Contour<Point> contours = MyMask.FindContours(Emgu.CV.CvEnum.CHAIN_APPROX_METHOD.CV_CHAIN_APPROX_SIMPLE, Emgu.CV.CvEnum.RETR_TYPE.CV_RETR_LIST, storage);
+                Contour<Point> contours = null;
+                try
+                {
+                    contours = MyMask.FindContours(Emgu.CV.CvEnum.CHAIN_APPROX_METHOD.CV_CHAIN_APPROX_SIMPLE, Emgu.CV.CvEnum.RETR_TYPE.CV_RETR_LIST, storage);
+                }
+                catch (Exception ex){
+                    
+                }
                 Contour<Point> Big = null;
                 Double BigArea = 0;
 
@@ -211,6 +255,19 @@ namespace IAProject
                 {
                     Contour<Point> currentContour = Big.ApproxPoly(Big.Perimeter * 0.0025, storage);
                     MyImageRegion.Draw(currentContour, new Bgr(Color.LimeGreen), 5);
+
+                    MCvMoments moment = new MCvMoments();               // a new MCvMoments object
+
+                    moment = Big.GetMoments();           // Moments of biggestContour
+
+                    CvInvoke.cvMoments(Big, ref moment, 0);
+
+                    double m_00 = CvInvoke.cvGetSpatialMoment(ref moment, 0, 0);
+                    double m_10 = CvInvoke.cvGetSpatialMoment(ref moment, 1, 0);
+                    double m_01 = CvInvoke.cvGetSpatialMoment(ref moment, 0, 1);
+
+                    int current_X = Convert.ToInt32(m_10 / m_00) / 10;      // X location of centre of contour              
+                    int current_Y = Convert.ToInt32(m_01 / m_00) / 10;      // Y location of center of contour
 
                     Hull = Big.GetConvexHull(Emgu.CV.CvEnum.ORIENTATION.CV_CLOCKWISE);
                     Defects = Big.GetConvexityDefacts(storage, Emgu.CV.CvEnum.ORIENTATION.CV_CLOCKWISE);
@@ -300,35 +357,19 @@ namespace IAProject
                         }
                     }
 
+                    if (fingerNum <=1 )
+                    {
+                        Cursor.Position = new Point(current_X * 20, current_Y * 20);
+                    }
+
+                    if (fingerNum > 4)
+                    {
+                        DoMouseClick();
+                    }
+
                     label1.Text = fingerNum.ToString();
-
-
                 }
             }
-        }
-
-        private void imageBox1_Click(object sender, EventArgs e)
-        {
-        }
-
-        private void imageBox4_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label1_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label2_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void imageBox6_Click(object sender, EventArgs e)
-        {
-
         }
     }
 }
